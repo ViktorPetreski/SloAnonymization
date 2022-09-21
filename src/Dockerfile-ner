@@ -1,0 +1,14 @@
+FROM pytorch/pytorch:latest
+
+WORKDIR /app
+
+COPY ./docker-ready/ner /app/
+
+RUN pip install -r ./requirements-pos.txt
+
+# Install additional requirements to run REST API
+#RUN pip install -r requirements-api.txt
+
+EXPOSE 5040
+
+CMD ["uvicorn", "ner:app", "--host", "0.0.0.0", "--port", "5040"]

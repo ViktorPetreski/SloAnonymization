@@ -1,0 +1,21 @@
+FROM python:3.9
+
+WORKDIR /app
+
+COPY ./docker-ready/pipeline/ /app/
+
+RUN pip install -r ./requirements.txt
+
+ENV CLASSLA_RESOURCES_DIR  "/app/data/classla"
+
+RUN python -c "import classla; import os; \
+               CLASSLA_RESOURCES_DIR = os.getenv('CLASSLA_RESOURCES_DIR', None); \
+               processors = 'tokenize,pos,lemma,ner'; \
+               classla.download('sl', processors=processors);"
+
+# Install additional requirements to run REST API
+#RUN pip install -r requirements-api.txt
+
+EXPOSE 5050
+
+CMD ["uvicorn", "pipeline:app", "--host", "0.0.0.0", "--port", "5050"]

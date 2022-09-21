@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ner-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slo-ner
+  template:
+    metadata:
+      labels:
+        app: slo-ner
+    spec:
+      containers:
+        - image: petreskiv/slo-ner:0.1
+          name: slo-ner
+          ports:
+            - containerPort: 8081
+              name: server
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /livness
+              port: server
+            initialDelaySeconds: 20
+            periodSeconds: 3
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: slo-ner
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: server
+  selector:
+    app: slo-ner

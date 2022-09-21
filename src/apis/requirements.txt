@@ -1,0 +1,4 @@
+allennlp
+allennlp-models
+fastapi
+uvicorn

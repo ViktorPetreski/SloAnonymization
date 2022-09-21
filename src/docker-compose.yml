@@ -1,0 +1,48 @@
+version: '3.9'
+
+services:
+  ner:
+    image: slo-ner
+    ports:
+      - "5040:5040"
+
+  pos:
+    image: slo-pos
+    environment:
+      POS_MODEL_PATH: "/app/models/sloberta"
+    ports:
+      - "5030:5030"
+    volumes:
+      - type: bind
+        source: "../models/xpos/custom_xpos_model_sloberta—combined_all—8e—24b—500ws—5e-05lr_new_test"
+        target: "/app/models/sloberta"
+        read_only: true
+
+  coref:
+    image: slo-coref
+    environment:
+      COREF_MODEL_PATH: "/app/models/sloberta"
+    ports:
+      - "5020:5020"
+    volumes:
+      - type: bind
+        source: "../models/coref/spanbert-senticoref10"
+        target: "/app/models/sloberta"
+        read_only: true
+
+  pipeline:
+    image: slo-pipeline
+    environment:
+      CLASSLA_RESOURCES_DIR: "/app/data/classla"
+    ports:
+      - "5050:5050"
+    links:
+      - ner
+      - pos
+      - coref
+  frontend:
+    image: frontend
+    ports:
+      - "80:80"
+    links:
+      - pipeline
