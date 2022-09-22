@@ -172,7 +172,7 @@ class Pipeline:
 
 
     def replace_bank_info(self):
-        swift_regex = r"\b[A-Z]{6}[A-Z2-9][A-NP-Z0-9]([A-Z0-9]{3})?\b"
+        swift_regex = r"\b(?<!\[)[A-Z]{6}[A-Z2-9][A-NP-Z0-9]([A-Z0-9]{3})?\b"
         iban_regex = r"\bSI56\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{3}\b"
         cc_number_reg = r"\b[3456][1-9]{3}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b"
 
@@ -212,27 +212,28 @@ class Pipeline:
         for mis in misc:
             if mis not in self.misc_mapper.keys():
                 parts = mis.split(" ")
-                pos_tag = self.pos_word_to_tag[parts[-1]]
                 placeholder = "MISC"
-                if pos_tag:
-                    if pos_tag[0] == "N":
-                        placeholder = "NOUN"
-                        if pos_tag[1] == "c":
-                            placeholder = "COMMON_NOUN"
-                        else:
-                            placeholder = "PROPER_NOUN"
-                        if pos_tag[3] == "s":
-                            placeholder = f"SINGULAR_{placeholder}"
-                        elif pos_tag[3] == "d":
-                            placeholder = f"DUAL_{placeholder}"
-                        else:
-                            placeholder = f"PLURAL_{placeholder}"
-                    if pos_tag[0] == "V":
-                        placeholder = "VERB"
-                    if pos_tag[0] == "A":
-                        placeholder = "ADJECTIVE"
-                    if pos_tag[0] == "P":
-                        placeholder = "PRONOUN"
+                if len(parts) > 0 and parts[-1] in self.pos_word_to_tag:
+                    pos_tag = self.pos_word_to_tag[parts[-1]]
+                    if pos_tag:
+                        if pos_tag[0] == "N":
+                            placeholder = "NOUN"
+                            if pos_tag[1] == "c":
+                                placeholder = "COMMON_NOUN"
+                            else:
+                                placeholder = "PROPER_NOUN"
+                            if pos_tag[3] == "s":
+                                placeholder = f"SINGULAR_{placeholder}"
+                            elif pos_tag[3] == "d":
+                                placeholder = f"DUAL_{placeholder}"
+                            else:
+                                placeholder = f"PLURAL_{placeholder}"
+                        if pos_tag[0] == "V":
+                            placeholder = "VERB"
+                        if pos_tag[0] == "A":
+                            placeholder = "ADJECTIVE"
+                        if pos_tag[0] == "P":
+                            placeholder = "PRONOUN"
                 calcu = self._calc_new_val(placeholder, self.misc_mapper)
                 new_val = self.faker.word() if calcu == "" else calcu
                 if mis[-1] in string.punctuation:
@@ -245,7 +246,7 @@ class Pipeline:
 
     def find_email_from_person(self, person: str):
         emails = self.mail_mapper.keys()
-        if self.mode == "readable":
+        if self.mode == "readable" or self.mode == "":
             lower_person = person.lower()
             name_surname = lower_person.split(" ")
             potential_usernames = []
@@ -276,19 +277,18 @@ class Pipeline:
         return ""
 
     def replace_events(self):
-        if "evt" in self.ner_tag_dist.keys():
-            for word, tag in self.ner_word_to_tag.items():
-                if word in self.ner_tag_dist["evt"]:
-                    if word not in self.event_mapper:
-                        calc = self._calc_new_val("EVENT", self.event_mapper)
-                        new_val = calc if calc != "" else random.choice(EVENT_NAMES)
-                        if word[-1] in string.punctuation:
-                            new_val += word[-1]
-                        self.event_mapper[word] = new_val
+        events = self.ner_tag_dist["evt"] if "evt" in self.ner_tag_dist else []
+        for word in events:
+            if word not in self.event_mapper:
+                calc = self._calc_new_val("EVENT", self.event_mapper)
+                new_val = calc if calc != "" else random.choice(EVENT_NAMES)
+                if word[-1] in string.punctuation:
+                    new_val += word[-1]
+                self.event_mapper[word] = new_val
 
-            for key, value in self.event_mapper.items():
-                pat = re.compile(re.escape(key), re.I)
-                self.text = pat.sub(value, self.text)
+        for key, value in self.event_mapper.items():
+            pat = re.compile(re.escape(key), re.I)
+            self.text = pat.sub(value, self.text)
 
 
 
@@ -297,28 +297,27 @@ class Pipeline:
         females = defaultdict(str)
         males = defaultdict(str)
         others = defaultdict(str)
-        for word, tag in self.ner_word_to_tag.items():
-            if word in self.ner_tag_dist["per"]:
-                last_word = word.split(" ")
-                new_name = ""
-                if len(last_word) > 1 and last_word[0] in self.pos_word_to_tag.keys():
-                    pos_tag = self.pos_word_to_tag[last_word[0]]
-                    if pos_tag[0] == "n" and pos_tag[1] == "p":
-                        if pos_tag[2] == "m":
-                            new_name = f"{self.faker.first_name_male()} {self.faker.last_name_male()}"
-                            new_m = self._calc_new_val("MALE", males)
-                            new_name =  new_name if new_m == "" else new_m
-                            males[word] = new_name
-                        elif pos_tag[2] == "f":
-                            new_name = f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
-                            new_m = self._calc_new_val("FEMALE", males)
-                            new_name = new_name if new_m == "" else new_m
-                            females[word] = new_name
-                        else:
-                            new_name = f"{self.faker.first_name_nonbinary()} {self.faker.last_name_nonbinary()}"
-                            new_m = self._calc_new_val("NON_BINARY", others)
-                            new_name = new_name if new_m == "" else new_m
-                            others[word] = new_name
+        persons = []
+        if "per" in self.ner_tag_dist:
+            persons.extend(self.ner_tag_dist["per"])
+        if "deriv-per" in self.ner_tag_dist:
+            persons.extend(self.ner_tag_dist["derivper"])
+        for word in persons:
+            last_word = word.split(" ")
+            new_name = ""
+            if len(last_word) > 1 and last_word[0] in self.pos_word_to_tag.keys():
+                pos_tag = self.pos_word_to_tag[last_word[0]]
+                if pos_tag[0] == "n" and pos_tag[1] == "p":
+                    if pos_tag[2] == "m":
+                        new_name = f"{self.faker.first_name_male()} {self.faker.last_name_male()}"
+                        new_m = self._calc_new_val("MALE", males)
+                        new_name =  new_name if new_m == "" else new_m
+                        males[word] = new_name
+                    elif pos_tag[2] == "f":
+                        new_name = f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
+                        new_m = self._calc_new_val("FEMALE", males)
+                        new_name = new_name if new_m == "" else new_m
+                        females[word] = new_name
                     else:
                         new_name = f"{self.faker.first_name_nonbinary()} {self.faker.last_name_nonbinary()}"
                         new_m = self._calc_new_val("NON_BINARY", others)
@@ -329,19 +328,24 @@ class Pipeline:
                     new_m = self._calc_new_val("NON_BINARY", others)
                     new_name = new_name if new_m == "" else new_m
                     others[word] = new_name
-                        # new_name = f"{self.faker.first_name_male()} {self.faker.last_name_male()}" if  pos_tag[2] == "m" else f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
-                if word[-1] in string.punctuation:
-                    new_name += word[-1]
-                name_pattern = re.compile(re.escape(word), re.I)
-                self.text = name_pattern.sub(new_name, self.text)
-                potential_email = self.find_email_from_person(word)
-                if potential_email != "":
-                    self.mail_mapper[potential_email] = f"{new_name.replace(' ', '.').lower()}@{self.faker.free_email_domain()}"
-                    self.text = self.text.replace(potential_email, self.mail_mapper[potential_email])
+            else:
+                new_name = f"{self.faker.first_name_nonbinary()} {self.faker.last_name_nonbinary()}"
+                new_m = self._calc_new_val("NON_BINARY", others)
+                new_name = new_name if new_m == "" else new_m
+                others[word] = new_name
+                    # new_name = f"{self.faker.first_name_male()} {self.faker.last_name_male()}" if  pos_tag[2] == "m" else f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
+            if word[-1] in string.punctuation:
+                new_name += word[-1]
+            name_pattern = re.compile(re.escape(word), re.I)
+            self.text = name_pattern.sub(new_name, self.text)
+            potential_email = self.find_email_from_person(word)
+            if potential_email != "":
+                self.mail_mapper[potential_email] = f"{new_name.replace(' ', '.').lower()}@{self.faker.free_email_domain()}"
+                self.text = self.text.replace(potential_email, self.mail_mapper[potential_email])
 
     def _find_dates(self):
         basic_reg = r"\b[012]\d[\./-][01]\d[\./-][12]\d{3}|[1][12][\./-][12]\d{3}|[0]\d[\./-][12]\d{3}|\d[\./-][12]\d{3}\b" # 20.04.2020 or 20/04/2022 or 02.2022
-        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|(leta\s\d{4})\b"
+        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|((leta|letu)\s\d{4})\b"
         for date in re.finditer(basic_reg, self.text, re.I | re.M):
             date = date.group(0)
             if date not in self.date_mapper:
@@ -369,7 +373,6 @@ class Pipeline:
                 month = self.classla(month).get("lemma")[0]
                 if month in MONTHS:
                     new_month = ""
-
                     month_no = MONTHS.index(month) + 1
                     total_days = monthrange(datetime.datetime.now().year, month_no)[1]
                     year = ""
