@@ -13,13 +13,17 @@ origins = [
     "https://localhost.tiangolo.com",
     "http://localhost",
     "http://localhost:8080",
+    "http://34.118.27.83:8080/",
+    "http://34.118.27.83:8080",
+    "http://34.118.27.83/",
+    "http://34.118.27.83",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["DELETE", "GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -41,7 +45,7 @@ async def vers():
         "text": "ok"
     }
 
-@app.post("/annonymize")
+@app.post("/anonymize")
 async def predict(
         req_body: _NERRequest = Body(
             example=_NERRequest(

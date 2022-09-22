@@ -35,7 +35,9 @@ class Pipeline:
         self.event_mapper: defaultdict = defaultdict(str)
         self.bank_info_mapper: dict = {"swift": defaultdict(str), "iban": defaultdict(str), "cc_number": defaultdict(str)}
         self.personal_info_mapper: dict = {"passport_no": defaultdict(str), "pid": defaultdict(str)}
-        self.classla = classla.Pipeline('sl', processors='tokenize,pos,lemma')
+        processors = 'tokenize,pos,lemma'
+        # classla.download('sl', processors=processors)
+        self.classla = classla.Pipeline('sl', processors=processors)
         Faker.seed(64)
         self.mode = "readable"
         self.faker: Faker = Faker("sl_SI")
@@ -116,7 +118,7 @@ class Pipeline:
             else:
                 self.address_mapper[location] = self.faker.country()
                 placeholder = "LOCATION"
-            calculated = self._calc_new_val("LOCATION" if self.mode is not "low" else placeholder, self.address_mapper)
+            calculated = self._calc_new_val("LOCATION" if self.mode != "low" else placeholder, self.address_mapper)
             new_val = calculated if calculated != "" else self.address_mapper[location]
             if location[-1] in string.punctuation:
                 new_val = f"{new_val}{location[-1]}"
@@ -174,12 +176,12 @@ class Pipeline:
         iban_regex = r"\bSI56\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{3}\b"
         cc_number_reg = r"\b[3456][1-9]{3}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b"
 
-        self._replace_info(swift_regex, self.bank_info_mapper["swift"], "SWIFT" if self.mode is not "low" else "BANK_INFO")
-        self._replace_info(iban_regex, self.bank_info_mapper["iban"], "IBAN" if self.mode is not "low" else "BANK_INFO")
+        self._replace_info(swift_regex, self.bank_info_mapper["swift"], "SWIFT" if self.mode != "low" else "BANK_INFO")
+        self._replace_info(iban_regex, self.bank_info_mapper["iban"], "IBAN" if self.mode != "low" else "BANK_INFO")
         for info in re.finditer(cc_number_reg, self.text, re.M):
             pp = info.group(0)
             if pp not in self.bank_info_mapper["cc_number"]:
-                calc = self._calc_new_val("CREDIT_CARD_NUMBER" if self.mode is not "low" else "BANK_INFO", self.bank_info_mapper["cc_number"])
+                calc = self._calc_new_val("CREDIT_CARD_NUMBER" if self.mode != "low" else "BANK_INFO", self.bank_info_mapper["cc_number"])
                 new_val = self.faker.credit_card_number() if calc == "" else calc
                 if pp[-1] in string.punctuation:
                     new_val = f"{new_val}{pp[-1]}"
@@ -274,18 +276,19 @@ class Pipeline:
         return ""
 
     def replace_events(self):
-        for word, tag in self.ner_word_to_tag.items():
-            if word in self.ner_tag_dist["evt"]:
-                if word not in self.event_mapper:
-                    calc = self._calc_new_val("EVENT", self.event_mapper)
-                    new_val = calc if calc != "" else random.choice(EVENT_NAMES)
-                    if word[-1] in string.punctuation:
-                        new_val += word[-1]
-                    self.event_mapper[word] = new_val
+        if "evt" in self.ner_tag_dist.keys():
+            for word, tag in self.ner_word_to_tag.items():
+                if word in self.ner_tag_dist["evt"]:
+                    if word not in self.event_mapper:
+                        calc = self._calc_new_val("EVENT", self.event_mapper)
+                        new_val = calc if calc != "" else random.choice(EVENT_NAMES)
+                        if word[-1] in string.punctuation:
+                            new_val += word[-1]
+                        self.event_mapper[word] = new_val
 
-        for key, value in self.event_mapper.items():
-            pat = re.compile(re.escape(key), re.I)
-            self.text = pat.sub(value, self.text)
+            for key, value in self.event_mapper.items():
+                pat = re.compile(re.escape(key), re.I)
+                self.text = pat.sub(value, self.text)
 
 
 
