@@ -8,10 +8,10 @@ import random
 
 from faker import Faker
 
-from POSPredictor import POSPredictor
-from CorefResolver import CorefResolver
+from src.py_models.POSPredictor import POSPredictor
+from src.py_models.CorefResolver import CorefResolver
 from src.vp_ta_constants import COUNTRIES, SLOVENIAN_MUNICIPALITIES, SLOVENIAN_CITIES, MONTHS, EVENT_NAMES
-from NERPredictor import NERPredictor
+from src.py_models.NERPredictor import NERPredictor
 import classla
 import rstr
 import nltk
@@ -55,11 +55,34 @@ class Pipeline:
         self.logger = logging.getLogger('TrainL1OStrategy')
         # classla.download('sl', processors=processors)
 
-    def start_predictions(self):
-        self.text = self.coref_resolver.resolve_allennlp()
-        self.ner_predictor.predict()
-        self.pos_predictor.predict()
+
+    def start_predictions(self, text, mode="readable"):
+
+        self.reset_mappers()
+
+        self.text = text
+        self.mode = mode
+
+        self.text = self.coref_resolver.resolve_allennlp(text)
+        self.ner_predictor.predict(self.text)
+        self.pos_predictor.predict(self.text)
         print(self.coref_resolver.corefs)
+
+        self.replace_organizations()
+        self.replace_dates()
+        self.replace_misc()
+        self.replace_address()
+        self.replace_mail()
+        self.replace_person()
+        self.replace_bank_info()
+        self.replace_emsho()
+        self.replace_licence_plate()
+        self.replace_personal_info()
+        self.replace_phones()
+        self.replace_events()
+
+        return self.text
+
 
     def _calc_new_val(self, placeholder, mapper):
         new_val = ""
@@ -70,8 +93,6 @@ class Pipeline:
         elif self.mode == "high":
             new_val = "[REDACTED]"
         return new_val
-
-
 
     def replace_phones(self):
         phone_regex = r"\b((0[1-7][0-9])[ \-\/]?([0-9]{3})[ \-\/]?([0-9]{3}))\b|\b([\+]?(386)[ \-\/]?([0-9]{2})[ \-\/]?([0-9]{3})[ \-\/]?([0-9]{3}))\b"
@@ -165,11 +186,12 @@ class Pipeline:
             for key, val in self.vat_mapper.items():
                 self.text = self.text.replace(key, val)
 
-    def _replace_info(self, pattern, mapper):
-        for info in re.finditer(pattern, self.text, re.M):
+    def _replace_info(self, pattern, mapper, placeholder):
+        for info in re.finditer(pattern, self.text, re.MULTILINE):
             pp = info.group(0)
             if pp not in mapper:
-                new_val = rstr.xeger(pattern)
+                calc = self._calc_new_val(placeholder, mapper)
+                new_val = rstr.xeger(pattern) if calc == "" else calc
                 if pp[-1] in string.punctuation:
                     new_val = f"{new_val}{pp[-1]}"
                 mapper[pp] = new_val
@@ -178,11 +200,11 @@ class Pipeline:
 
 
     def replace_bank_info(self):
-        swift_regex = r"\b[A-Z]{6}[A-Z2-9][A-NP-Z0-9]([A-Z0-9]{3})?\b"
+        swift_regex = r"\b(?<!\[)[A-Z]{6}[A-Z2-9][A-NP-Z0-9]([A-Z0-9]{3})?\b"
         iban_regex = r"\bSI56\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{3}\b"
         cc_number_reg = r"\b[456][1-9]{3}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b"
-        self._replace_info(swift_regex, self.bank_info_mapper["swift"])
-        self._replace_info(iban_regex, self.bank_info_mapper["iban"])
+        self._replace_info(swift_regex, self.bank_info_mapper["swift"], "SWIFT" if self.mode != "low" else "BANK_INFO")
+        self._replace_info(iban_regex, self.bank_info_mapper["iban"], "IBAN" if self.mode != "low" else "BANK_INFO")
         for info in re.finditer(cc_number_reg, self.text, re.M):
             pp = info.group(0)
             if pp not in self.bank_info_mapper["cc_number"]:
@@ -194,11 +216,11 @@ class Pipeline:
                 self.text = self.text.replace(key, val)
 
     def replace_organizations(self):
-        organizations = self.ner_predictor.tag_dist["org"]
+        organizations = self.ner_predictor.tag_dist["org"] if "org" in self.ner_predictor.tag_dist else []
         for organization in organizations:
             if organization not in self.org_mapper.keys():
                 new_val = self.faker.company()
-                comp = self._calc_new_val("ORGANIZIACIJA", self.org_mapper)
+                comp = self._calc_new_val("ORGANIZATION", self.org_mapper)
                 self.org_mapper[organization] = new_val if comp == "" else comp
         for key, val in self.org_mapper.items():
             pattern = re.compile(re.escape(key), re.I)
@@ -213,14 +235,34 @@ class Pipeline:
 
         for mis in misc:
             if mis not in self.misc_mapper.keys():
-                new_val = self.faker.word()
+                parts = mis.split(" ")
+                placeholder = "MISC"
+                if len(parts) > 0 and parts[-1] in self.pos_predictor.word_to_tag:
+                    pos_tag = self.pos_predictor.word_to_tag[parts[-1]]
+                    if pos_tag:
+                        if pos_tag[0] == "N":
+                            # placeholder = "NOUN"
+                            if pos_tag[1] == "c":
+                                placeholder = "COMMON_NOUN"
+                            else:
+                                placeholder = "PROPER_NOUN"
+                            if pos_tag[3] == "s":
+                                placeholder = f"SINGULAR_{placeholder}"
+                            elif pos_tag[3] == "d":
+                                placeholder = f"DUAL_{placeholder}"
+                            else:
+                                placeholder = f"PLURAL_{placeholder}"
+                        if pos_tag[0] == "V":
+                            placeholder = "VERB"
+                        if pos_tag[0] == "A":
+                            placeholder = "ADJECTIVE"
+                        if pos_tag[0] == "P":
+                            placeholder = "PRONOUN"
+                calcu = self._calc_new_val(placeholder, self.misc_mapper)
+                new_val = self.faker.word() if calcu == "" else calcu
                 if mis[-1] in string.punctuation:
                     new_val = f"{new_val}{mis[-1]}"
                 self.misc_mapper[mis] = new_val
-
-        for key, val in self.misc_mapper.items():
-            pattern = re.compile(re.escape(key), re.I)
-            self.text = pattern.sub(val, self.text)
 
     def find_email_from_person(self, person: str):
         emails = self.mail_mapper.keys()
@@ -256,7 +298,7 @@ class Pipeline:
         males = defaultdict(str)
         others = defaultdict(str)
         for word, tag in self.ner_predictor.word_to_tag.items():
-            if word in self.ner_predictor.tag_dist["per"]:
+            if "per" in self.ner_predictor.tag_dist and word in self.ner_predictor.tag_dist["per"]:
                 last_word = word.split(" ")
                 new_name = ""
                 if len(last_word) > 1 and last_word[0] in self.pos_predictor.word_to_tag.keys():
@@ -269,7 +311,7 @@ class Pipeline:
                             males[word] = new_name
                         elif pos_tag[2] == "f":
                             new_name = f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
-                            new_m = self._calc_new_val("FEMALE", males)
+                            new_m = self._calc_new_val("FEMALE", females)
                             new_name = new_name if new_m == "" else new_m
                             females[word] = new_name
                         else:
@@ -301,7 +343,7 @@ class Pipeline:
 
     def _find_dates(self):
         basic_reg = r"\b[012]\d[\./-][01]\d[\./-][12]\d{3}|[1][12][\./-][12]\d{3}|[0]\d[\./-][12]\d{3}|\d[\./-][12]\d{3}\b"  # 20.04.2020 or 20/04/2022 or 02.2022
-        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|(leta\s\d{4})\b"
+        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|((leta|letu)\s\d{4})\b"
         for date in re.finditer(basic_reg, self.text, re.I | re.M):
             date = date.group(0)
             if date not in self.date_mapper:
@@ -323,8 +365,12 @@ class Pipeline:
             parts = da.group(0).strip().split(" ")
             calcu = self._calc_new_val("DATE", self.date_mapper)
             new_val = ""
+            print(parts)
             if parts[0] == "leta":
-                new_val = f"leta {random.randint(1990, 2022)}"
+                year = int(parts[1]) if parts[1].isdecimal() else 2000
+                year = max([random.randint(year - 10, year + 10), datetime.date.today().year])
+                new_val = f"leta {year}"
+                # new_val = f"leta {random.randint(1990, 2022)}"
             else:
                 month = parts[1].strip()
                 month = self.classla(month).get("lemma")[0]
@@ -350,8 +396,8 @@ class Pipeline:
         self._find_dates()
 
     def replace_licence_plate(self):
-        plate_reg = r"(CE|GO|KK|KP|KR|LJ|MB|MS|NM|PO|SG)[0-9]{3}\-?[A-Z]{2}"
-        self._replace_info(plate_reg, self.plate_mapper)
+        plate_reg = r"\b(CE|GO|KK|KP|KR|LJ|MB|MS|NM|PO|SG)\s?(([0-9]{3}\-?[A-Z]{2})|([A-Z]{2}[\s-]?\d{3})|([0-9]{2}[\s-]?[A-Z]{3}))\b"
+        self._replace_info(plate_reg, self.plate_mapper, "LICENCE_PLATE")
 
 
     def replace_events(self):
@@ -370,9 +416,9 @@ class Pipeline:
 
 
     def replace_personal_info(self):
-        passport_pattern = r"[P][A-Z0-9][0-9]{7}"
-        pid_pattern = r"(0[1-9]|[12][0-9]|3[01])(0[1-9]|1[012])([9][2-9][0-9]|0[012][0-9])[0-9]{6}"
-        new_pid_pattern = r"[I][A-Z][0-9]{7}"
+        passport_pattern = r"\b[P][A-Z0-9][0-9]{7}\b"
+        pid_pattern = r"\b(0[1-9]|[12][0-9]|3[01])(0[1-9]|1[012])([9][2-9][0-9]|0[012][0-9])[0-9]{6}\b"
+        new_pid_pattern = r"\b[I][A-Z][0-9]{7}\b"
         for passport in re.finditer(passport_pattern, self.text, re.I):
             if passport not in self.personal_info_mapper["passport_no"]:
                 letters = "".join(random.choices(string.ascii_uppercase, k=2))
@@ -391,22 +437,42 @@ class Pipeline:
         for key, val in self.personal_info_mapper["pid"]:
             self.text = self.text.replace(key, val)
 
+    def reset_mappers(self):
+        self.phone_mapper: defaultdict = defaultdict(str)
+        self.name_mapper: defaultdict = defaultdict(str)
+        self.mail_mapper: defaultdict = defaultdict(str)
+        self.org_mapper: defaultdict = defaultdict(str)
+        self.address_mapper: defaultdict = defaultdict(str)
+        self.emso_mapper: defaultdict = defaultdict(str)
+        self.vat_mapper: defaultdict = defaultdict(str)
+        self.misc_mapper: defaultdict = defaultdict(str)
+        self.person_mapper: defaultdict = defaultdict(str)
+        self.date_mapper: defaultdict = defaultdict(str)
+        self.plate_mapper: defaultdict = defaultdict(str)
+        self.event_mapper: defaultdict = defaultdict(str)
+        self.bank_info_mapper: dict = {"swift": defaultdict(str), "iban": defaultdict(str),
+                                       "cc_number": defaultdict(str)}
+        self.personal_info_mapper: dict = {"passport_no": defaultdict(str), "pid": defaultdict(str)}
+        self.pos_predictor.reset_params()
+        self.ner_predictor.reset_params()
 
 
-if __name__ == "__main__":
-    # nltk.download('omw-1.4')
-    pipeline = Pipeline("Slovenske prvake že v nedeljo, 23. septembra, v velenjski Rdeči dvorani čaka večni derbi z Gorenjem v okviru tretjega kroga lige NLB, v četrtek, 29. septembra, pa še gostovanje pri španski Barceloni. Katalonski velikan, kjer igrata tudi slovenska reprezentanta Blaž Janc in Domen Makuc, je v zadnjih dveh sezonah slavil v Ligi Prvakov.")
-    pipeline.start_predictions()
-    print(pipeline.pos_predictor.tag_dist)
-    print(pipeline.ner_predictor.tag_dist)
-    pipeline.replace_organizations()
-    pipeline.replace_dates()
-    pipeline.replace_misc()
-    pipeline.replace_address()
-    pipeline.replace_mail()
-    pipeline.replace_phones()
-    pipeline.replace_emsho()
-    pipeline.replace_bank_info()
-    pipeline.replace_person()
-    pipeline.replace_events()
-    print(pipeline.text)
+
+#
+# if __name__ == "__main__":
+#     # nltk.download('omw-1.4')
+#     pipeline = Pipeline("Slovenske prvake že v nedeljo, 23. septembra, v velenjski Rdeči dvorani čaka večni derbi z Gorenjem v okviru tretjega kroga lige NLB, v četrtek, 29. septembra, pa še gostovanje pri španski Barceloni. Katalonski velikan, kjer igrata tudi slovenska reprezentanta Blaž Janc in Domen Makuc, je v zadnjih dveh sezonah slavil v Ligi Prvakov.")
+#     pipeline.start_predictions()
+#     print(pipeline.pos_predictor.tag_dist)
+#     print(pipeline.ner_predictor.tag_dist)
+#     pipeline.replace_organizations()
+#     pipeline.replace_dates()
+#     pipeline.replace_misc()
+#     pipeline.replace_address()
+#     pipeline.replace_mail()
+#     pipeline.replace_phones()
+#     pipeline.replace_emsho()
+#     pipeline.replace_bank_info()
+#     pipeline.replace_person()
+#     pipeline.replace_events()
+#     print(pipeline.text)

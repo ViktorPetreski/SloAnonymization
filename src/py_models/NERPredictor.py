@@ -13,15 +13,22 @@ class NERPredictor:
         self.tag_dist = defaultdict(list)
         self.word_to_tag = defaultdict(str)
         self.tagged_sentence = ""
-        logging.basicConfig(
-            stream=sys.stdout,
-            level=logging.INFO,
-            format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
-        )
-        self.logger = logging.getLogger('TrainL1OStrategy')
+        # logging.basicConfig(
+        #     stream=sys.stdout,
+        #     level=logging.INFO,
+        #     format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
+        # )
+        # self.logger = logging.getLogger('TrainL1OStrategy')
+        self.model = self.init_model()
+        self.tokenizer = self.init_tokenizer()
+
+    def reset_params(self):
+        self.tag_dist = defaultdict(list)
+        self.word_to_tag = defaultdict(str)
+        self.text = ""
 
     def init_tokenizer(self):
-        self.logger.info("Init ner tokenizer")
+        # self.logger.info("Init ner tokenizer")
         tokenizer = CamembertTokenizer.from_pretrained(
             self.tokenizer_path,
             from_pt=True,
@@ -30,23 +37,22 @@ class NERPredictor:
         return tokenizer
 
     def init_model(self):
-        self.logger.info("Init ner model")
+        # self.logger.info("Init ner model")
         return CamembertForTokenClassification.from_pretrained(
             self.model_path, local_files_only=True)
 
-    def predict(self):
-        self.logger.info("Starting to predict ner")
+    def predict(self, text):
+        # self.logger.info("Starting to predict ner")
         tag2id = {tag: str(id) for id, tag in enumerate(self.tags)}
         id2tag = {int(id): tag for tag, id in tag2id.items()}
-        model = self.init_model()
-        tokenizer = self.init_tokenizer()
-        nlp = pipeline("ner", model=model, tokenizer=tokenizer, ignore_labels=["O"])
+
+        nlp = pipeline("ner", model=self.model, tokenizer=self.tokenizer, ignore_labels=["O"])
         new_tokens = []
         new_labels = []
-        nes = []
+        nes = [""]
         final_labels = []
         word_token  = []
-        tokens = nlp(self.text)
+        tokens = nlp(text)
         # print(tokens)
         for tt in tokens:
             token = tt["word"]
@@ -69,5 +75,5 @@ class NERPredictor:
             word_token.append(f"{word} [{label}]")
             self.word_to_tag[word.lower()] = label.replace("B-", "").lower()
         self.tagged_sentence = " ".join(word_token)
-        self.logger.info("Finished predicting ner")
+        # self.logger.info("Finished predicting ner")
         return self.tagged_sentence

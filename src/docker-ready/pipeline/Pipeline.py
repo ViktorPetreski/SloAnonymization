@@ -301,7 +301,7 @@ class Pipeline:
         if "per" in self.ner_tag_dist:
             persons.extend(self.ner_tag_dist["per"])
         if "deriv-per" in self.ner_tag_dist:
-            persons.extend(self.ner_tag_dist["derivper"])
+            persons.extend(self.ner_tag_dist["deriv-per"])
         for word in persons:
             last_word = word.split(" ")
             new_name = ""
@@ -315,7 +315,7 @@ class Pipeline:
                         males[word] = new_name
                     elif pos_tag[2] == "f":
                         new_name = f"{self.faker.first_name_female()} {self.faker.last_name_female()}"
-                        new_m = self._calc_new_val("FEMALE", males)
+                        new_m = self._calc_new_val("FEMALE", females)
                         new_name = new_name if new_m == "" else new_m
                         females[word] = new_name
                     else:
@@ -345,7 +345,7 @@ class Pipeline:
 
     def _find_dates(self):
         basic_reg = r"\b[012]\d[\./-][01]\d[\./-][12]\d{3}|[1][12][\./-][12]\d{3}|[0]\d[\./-][12]\d{3}|\d[\./-][12]\d{3}\b" # 20.04.2020 or 20/04/2022 or 02.2022
-        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|((leta|letu)\s\d{4})\b"
+        text_reg = r"\b(\d{1,2}\.\s\w+\b\s?(?:[12]\d{3})?)|((leta|letu|letnik)\s\d{4})\b"
         for date in re.finditer(basic_reg, self.text, re.I | re.M):
             date = date.group(0)
             if date not in self.date_mapper:
@@ -367,7 +367,9 @@ class Pipeline:
             calcu = self._calc_new_val("DATE", self.date_mapper)
             new_val = ""
             if parts[0] == "leta":
-                new_val = f"leta {random.randint(1990, 2022)}"
+                year = int(parts[1]) if parts[1].isdecimal() else 2000
+                year = max([random.randint(year - 10, year + 10), datetime.date.today().year])
+                new_val = f"leta {year}"
             else:
                 month = parts[1].strip()
                 month = self.classla(month).get("lemma")[0]

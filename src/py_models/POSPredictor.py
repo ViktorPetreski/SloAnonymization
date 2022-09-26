@@ -11,15 +11,21 @@ class POSPredictor:
         self.model_path = model_path_name
         self.tag_dist = defaultdict(list)
         self.word_to_tag = defaultdict(str)
-        logging.basicConfig(
-            stream=sys.stdout,
-            level=logging.INFO,
-            format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
-        )
-        self.logger = logging.getLogger('TrainL1OStrategy')
+        # logging.basicConfig(
+        #     stream=sys.stdout,
+        #     level=logging.INFO,
+        #     format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s'
+        # )
+        # self.logger = logging.getLogger('TrainL1OStrategy')
+        self.model = self.init_model()
+        self.tokenizer = self.init_tokenizer()
+
+    def reset_params(self):
+        self.tag_dist = defaultdict(list)
+        self.word_to_tag = defaultdict(str)
 
     def init_tokenizer(self):
-        self.logger.info("Init pos tokenizer")
+        # self.logger.info("Init pos tokenizer")
         tokenizer = CamembertTokenizer.from_pretrained(
             self.tokenizer_path,
             from_pt=True,
@@ -29,24 +35,23 @@ class POSPredictor:
         return tokenizer
 
     def init_model(self):
-        self.logger.info("Init pos model")
+        # self.logger.info("Init pos model")
         return CamembertForTokenClassification.from_pretrained(self.model_path, local_files_only=True)
 
 
-    def predict(self):
-        self.logger.info("Start pos prediction")
-        model = self.init_model()
-        tokenizer = self.init_tokenizer()
+    def predict(self, text):
+        # self.logger.info("Start pos prediction")
+
         nlp = pipeline("token-classification",
-                       model=model,
-                       tokenizer=tokenizer,
+                       model=self.model,
+                       tokenizer=self.tokenizer,
                        ignore_labels=[""])
 
         new_tokens = []
         new_labels = []
         nes = []
         final_labels = []
-        tokens = nlp(self.text)
+        tokens = nlp(text)
         word_token = []
         for tt in tokens:
             token = tt["word"]
@@ -69,6 +74,6 @@ class POSPredictor:
             self.tag_dist[label.lower()].append(word)
             key = word.lower().translate(str.maketrans('', '', string.punctuation))
             self.word_to_tag[key] = label.lower()
-        self.logger.info("Finished predicting pos")
+        # self.logger.info("Finished predicting pos")
         return " ".join(word_token)
 
