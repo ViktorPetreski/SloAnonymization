@@ -6,7 +6,7 @@
 ```bash
 cd src
 docker-compose -f docker-compose.yml up
-``
+```
 
 The web tool is listening on `http://localhost:8080`
 
