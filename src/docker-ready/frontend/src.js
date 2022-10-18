@@ -7,7 +7,7 @@ jQuery(document).ready(function(){
             "mode": mode
         }
         $("#loading").removeClass("visually-hidden")
-        fetch("http://localhost:5050/annonymize", {
+        fetch("http://localhost:5050/anonymize", {
             method: "POST",
             body: JSON.stringify(data),
             headers: {
@@ -20,6 +20,9 @@ jQuery(document).ready(function(){
                 console.log(data)
                 $("#loading").addClass("visually-hidden")
                 $("#res").text(data.text)
+            })
+            .catch(err => {
+                $("#loading").addClass("visually-hidden")
             })
     })
 })

@@ -115,6 +115,9 @@ class Pipeline:
             elif location not in self.address_mapper and lower_loc in SLOVENIAN_CITIES:
                 self.address_mapper[location] = self.faker.city()
                 placeholder = "CITY"
+            elif location not in self.address_mapper and lower_loc in COUNTRIES:
+                self.address_mapper[location] = random.choice(COUNTRIES)
+                placeholder = "COUNTRY"
             else:
                 self.address_mapper[location] = self.faker.country()
                 placeholder = "LOCATION"

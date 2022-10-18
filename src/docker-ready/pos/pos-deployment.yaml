@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pos-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slo-pos
+  template:
+    metadata:
+      labels:
+        app: slo-pos
+    spec:
+      containers:
+        - image: petreskiv/slo-pos:0.2
+          name: slo-pos
+          ports:
+            - containerPort: 5030
+              name: server
+              protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: slo-pos
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5030
+      protocol: TCP
+      targetPort: server
+  selector:
+    app: slo-pos

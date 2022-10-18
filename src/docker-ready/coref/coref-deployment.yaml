@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coref-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slo-coref
+  template:
+    metadata:
+      labels:
+        app: slo-coref
+    spec:
+      containers:
+        - image: petreskiv/slo-coref:0.2
+          name: slo-coref
+          ports:
+            - containerPort: 5020
+              name: server
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              ephemeral-storage: 2Gi
+              memory: 4G
+            requests:
+              cpu: "1"
+              ephemeral-storage: 2Gi
+              memory: 4G
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: slo-coref
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5020
+      protocol: TCP
+      targetPort: server
+  selector:
+    app: slo-coref

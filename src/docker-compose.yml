@@ -36,3 +36,9 @@ services:
       - ner
       - pos
       - coref
+  frontend:
+    image: frontend
+    ports:
+      - "8080:80"
+    links:
+      - pipeline

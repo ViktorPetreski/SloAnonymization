@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pipeline
+  template:
+    metadata:
+      labels:
+        app: pipeline
+    spec:
+      containers:
+        - image: petreskiv/pipeline:0.12
+          imagePullPolicy: Always
+          name: pipeline
+          ports:
+            - containerPort: 5050
+              name: server
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "1"
+              ephemeral-storage: 1Gi
+              memory: 4Gi
+            requests:
+              cpu: "1"
+              ephemeral-storage: 1Gi
+              memory: 4G
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pipeline
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 5050
+      protocol: TCP
+      targetPort: server
+  loadBalancerIP: "34.118.27.83"
+  selector:
+    app: pipeline
